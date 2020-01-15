@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -25,12 +26,17 @@ def make_dir(dir_name: str, path: str) -> None:
 
 
 driver = webdriver.Chrome()
+
+CWD = os.getcwd()
 URL = "https://www.allaboutbirds.org/guide/browse/taxonomy"
 USER_AGENT_STRING = "https://developers.whatismybrowser.com/useragents/parse/?analyse-my-user-agent=yes"  # noqa: E501
 headers = {'User-Agent': USER_AGENT_STRING}
+
 r = requests.get(URL, headers=headers)
 soup = BeautifulSoup(r.text, "lxml")
-make_dir("BirdImages", os.getcwd())
+
+make_dir("train", CWD)
+make_dir("test", CWD)
 
 taxonomy = get_urls(soup)
 
@@ -38,10 +44,18 @@ for family in taxonomy:
     r = requests.get(URL + "/" + family, headers=headers)
     soup = BeautifulSoup(r.text, "lxml")
     link = soup.find_all("h3")
+
+    make_dir(family, CWD + "\\train\\")
+    make_dir(family, CWD + "\\test\\")
+
     bird_names = [name.text for name in link]
-    bird_urls = [tag.a.get("href") for tag in link]
-    for bird_name, bird_url in zip(bird_names, bird_urls):
-        make_dir("_".join(bird_name.split()), os.getcwd() + "\\BirdImages\\")
+
+    for bird_name in bird_names:
+        make_dir("_".join(bird_name.split()), CWD + "\\train\\")
+        make_dir("_".join(bird_name.split()), CWD + "\\test\\")
+
+        birdname = "_".join(bird_name.split())
+
         driver.get("https://www.macaulaylibrary.org/")
         try:
             element_present = EC.presence_of_element_located((
@@ -70,3 +84,47 @@ for family in taxonomy:
             print("Timed out waiting for page to load")
 
         driver.find_element_by_class_name("RadioGroup-secondary").click()
+
+        time.sleep(1)
+
+        show_more_clicks = 0
+        while show_more_clicks < 10:
+            b = driver.find_elements_by_id("show_more")
+            if len(b) <= 0:
+                break
+            try:
+                html = driver.find_element_by_tag_name("html")
+                html.send_keys(Keys.END)
+                time.sleep(1)
+                b[0].click()
+                show_more_clicks += 1
+            except:
+                break
+
+        imgs = driver.find_elements_by_tag_name("img")
+        urls = []
+
+        for img in imgs:
+            try:
+                if not img.get_attribute("src"):
+                    continue
+            except:
+                break
+            download_url = img.get_attribute("src")
+            if download_url[-3:] != "480":
+                continue
+            urls.append(download_url)
+
+        decile = len(urls)/10
+
+        bird_name = "_".join(bird_name.split())
+
+        for i in range(len(urls)):
+            url = urls[i]
+            file_name = "bird" + str(i+1) + ".png"
+            if i < decile:
+                urlretrieve(url, CWD + "\\test\\" +
+                                 bird_name + "\\" + file_name)
+            else:
+                urlretrieve(url, CWD + "\\train\\" +
+                                 bird_name + "\\" + file_name)
